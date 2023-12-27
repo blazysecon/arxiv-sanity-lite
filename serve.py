@@ -26,7 +26,7 @@ from aslite.db import load_features
 # -----------------------------------------------------------------------------
 # inits and globals
 
-RET_NUM = 25 # number of papers to return per page
+RET_NUM = 50 # number of papers to return per page
 
 app = Flask(__name__)
 
