@@ -30,7 +30,7 @@ metas.sort(key=lambda kv: kv[1]['_time'], reverse=True) # most recent papers fir
 keys = [k for k,v in metas[:5000]] # only the most recent papers
 
 for i, key in enumerate(keys):
-    time.sleep(0.01) # for safety
+    time.sleep(1) # for safety
 
     # the path where we would store the thumbnail for this key
     thumb_path = os.path.join(THUMB_DIR, key + '.jpg')

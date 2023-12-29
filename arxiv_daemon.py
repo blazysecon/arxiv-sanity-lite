@@ -19,8 +19,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Arxiv Daemon')
     parser.add_argument('-n', '--num', type=int, default=100, help='up to how many papers to fetch')
+    parser.add_argument('-d', '--detailed', type=bool, default=False, help='whether to do a detailed fetch')
     parser.add_argument('-s', '--start', type=int, default=0, help='start at what index')
-    parser.add_argument('-b', '--break-after', type=int, default=3, help='how many 0 new papers in a row would cause us to stop early? or 0 to disable.')
+    parser.add_argument('-b', '--break-after', type=int, default=10, help='how many 0 new papers in a row would cause us to stop early? or 0 to disable.')
     args = parser.parse_args()
     print(args)
     """
@@ -29,80 +30,135 @@ if __name__ == '__main__':
     we've reached older papers that are already part of the database, to spare the arxiv API.
     """
 
-    # query string of papers to look for
-    q = 'cat:stat.AP+OR+cat:stat.ML+OR+cat:stat.ME+OR+cat:econ.EM+OR+cat:cs.LG'
-    #  (cs.[CL|LG|NE]
-    # stat.[AP|ME|ML]
     pdb = get_papers_db(flag='c')
     mdb = get_metas_db(flag='c')
-    prevn = len(pdb)
 
-    def store(p):
-        pdb[p['_id']] = p
-        mdb[p['_id']] = {'_time': p['_time']}
+    # query string of papers to look for
+    if args.detailed:
+        q_list = ['cat:econ.GN', 'cat:stat.ML', 'cat:cs.LG', 'cat:econ.EM', 'cat:stat.ME', 'cat:math.ST', 'cat:stat.AP']
+        # q_list = ['cat:math.ST']
+    else:
+        # q_list = ['cat:econ.EM']
+        q_list = ['cat:stat.AP+OR+cat:stat.ML+OR+cat:stat.ME+OR+cat:econ.EM+OR+cat:cs.LG+cat:math.ST']    
+    
+    for q in q_list:
 
-    # fetch the latest papers
-    total_updated = 0
-    zero_updates_in_a_row = 0
-    for k in range(args.start, args.start + args.num, 100):
-        logging.info('querying arxiv api for query %s at start_index %d' % (q, k))
-
-        # attempt to fetch a batch of papers from arxiv api
-        ntried = 0
-        while True:
-            try:
-                resp = get_response(search_query=q, start_index=k)
-                papers = parse_response(resp)
-                time.sleep(0.5)
-                if len(papers) == 100:
-                    break # otherwise we have to try again
-            except Exception as e:
-                logging.warning(e)
-                logging.warning("will try again in a bit...")
-                ntried += 1
-                if ntried > 1000:
-                    logging.error("ok we tried 1,000 times, something is srsly wrong. exitting.")
-                    sys.exit()
-                time.sleep(2 + random.uniform(0, 4))
-
-        # process the batch of retrieved papers
-        nhad, nnew, nreplace = 0, 0, 0
-        for p in papers:
-            pid = p['_id']
-            if pid in pdb:
-                if p['_time'] > pdb[pid]['_time']:
-                    # replace, this one is newer
-                    store(p)
-                    nreplace += 1
-                else:
-                    # we already had this paper, nothing to do
-                    nhad += 1
-            else:
-                # new, simple store into database
-                store(p)
-                nnew += 1
         prevn = len(pdb)
-        total_updated += nreplace + nnew
 
-        # some diagnostic information on how things are coming along
-        logging.info(papers[0]['_time_str'])
-        logging.info("k=%d, out of %d: had %d, replaced %d, new %d. now have: %d" %
-             (k, len(papers), nhad, nreplace, nnew, prevn))
+        def store(p):
+            pdb[p['_id']] = p
+            mdb[p['_id']] = {'_time': p['_time']}
 
-        # early termination criteria
-        if nnew == 0:
-            zero_updates_in_a_row += 1
-            if args.break_after > 0 and zero_updates_in_a_row >= args.break_after:
-                logging.info("breaking out early, no new papers %d times in a row" % (args.break_after, ))
-                break
-            elif k == 0:
-                logging.info("our very first call for the latest there were no new papers, exitting")
-                break
-        else:
-            zero_updates_in_a_row = 0
+        n_papers = args.start + args.num
 
-        # zzz
-        time.sleep(1 + random.uniform(0, 3))
+        if args.detailed:
+            # get total number of possible results first
+            ntried = 1
+            if_success = False
+            while True:
+                try:
+                    resp = get_response(search_query=q, start_index=0)
+                    time.sleep(1)
+                    papers, total_results = parse_response(resp)
+                    if total_results > 0:
+                        break
+                    logging.warning(f"we tried {ntried} times without errors, but got total_results = {total_results}, will wait for 10min and try again")
+                    time.sleep(10*60)
+                    ntried += 1
+                except Exception as e:
+                    logging.warning(e)
+                    total_results = None
+                    break
+
+            if total_results:
+                logging.info(f"total_results = {total_results}")
+                n_papers = min(total_results, 49900)
+
+        # fetch the latest papers
+        total_updated = 0
+        zero_updates_in_a_row = 0
+        for k in range(args.start, n_papers, 100):
+            logging.info('querying arxiv api for query %s at start_index %d' % (q, k))
+
+            # attempt to fetch a batch of papers from arxiv api
+            ntried = 0
+            if_success = False
+            while True:
+                try:
+                    logging.info(f"{ntried}, start_index = {k}, q = {q}")
+
+                    # # for debugging read response from file
+                    # with open('tmp/query_result.xml', 'r') as f:
+                    #     resp = f.read()
+
+                    resp = get_response(search_query=q, start_index=k)
+                    papers, _ = parse_response(resp)
+                    time.sleep(5 + random.uniform(0, 10))
+
+                    if len(papers) == 100:
+                        if_success = True
+                        break # otherwise we have to try again
+                    ntried += 1
+                    if ntried > 3:
+                        if len(papers) == 0:
+                            logging.warning(f"we tried {ntried} times without errors, but got len(papers) = {len(papers)} < 100, will wait for 5min and try again")
+                            time.sleep(5*60)
+                        else:
+                            if_success = True
+                            break # otherwise we have to try again
+                    if ntried > 100:
+                        if len(papers) == 0:
+                            logging.warning(f"we tried {ntried} times without errors, but got len(papers) = {len(papers)} < 100, exiting")
+                            break
+                except Exception as e:
+                    logging.warning(e)
+                    logging.warning("will try again in a bit...")
+                    ntried += 1
+                    if ntried > 100:
+                        logging.error("ok we tried {ntried} times, something is seriously wrong. exiting.")
+                        sys.exit()
+                    time.sleep(10 + random.uniform(0, 10))
+            if not if_success:
+                continue
+
+            # process the batch of retrieved papers
+            nhad, nnew, nreplace = 0, 0, 0
+            for p in papers:
+                pid = p['_id']
+                if pid in pdb:
+                    if p['_time'] > pdb[pid]['_time']:
+                        # replace, this one is newer
+                        store(p)
+                        nreplace += 1
+                    else:
+                        # we already had this paper, nothing to do
+                        nhad += 1
+                else:
+                    # new, simple store into database
+                    store(p)
+                    nnew += 1
+            prevn = len(pdb)
+            total_updated += nreplace + nnew
+
+            # some diagnostic information on how things are coming along
+            logging.info(papers[0]['_time_str'])
+            logging.info("k=%d, out of %d: had %d, replaced %d, new %d. now have: %d" %
+                (k, len(papers), nhad, nreplace, nnew, prevn))
+
+            # early termination criteria
+            if nnew == 0:
+                zero_updates_in_a_row += 1
+                if args.break_after > 0 and zero_updates_in_a_row >= args.break_after:
+                    logging.info("breaking out early, no new papers %d times in a row" % (args.break_after, ))
+                    break
+                elif k == 0:
+                    logging.info("our very first call for the latest there were no new papers, exitting")
+                    break
+            else:
+                zero_updates_in_a_row = 0
+
+            # zzz
+            time.sleep(1 + random.uniform(0, 3))
 
     # exit with OK status if anything at all changed, but if nothing happened then raise 1
     sys.exit(0 if total_updated > 0 else 1)

@@ -50,8 +50,14 @@ def parse_arxiv_url(url):
 def parse_response(response):
 
     out = []
+
+    # get opensearch:totalResults field
+    total_results = int(feedparser.parse(response)['feed']['opensearch_totalresults'])
+                    
     parse = feedparser.parse(response)
-    for e in parse.entries:
+    for idx, e in enumerate(parse.entries):
+        if idx < 0: # for debugging increase this number
+            print(e)
         j = encode_feedparser_dict(e)
         # extract / parse id information
         idv, rawid, version = parse_arxiv_url(j['id'])
@@ -65,7 +71,7 @@ def parse_response(response):
         del j['title_detail']
         out.append(j)
 
-    return out
+    return out, total_results
 
 def filter_latest_version(idvs):
     """

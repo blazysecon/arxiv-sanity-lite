@@ -23,6 +23,13 @@ from flask import session
 from aslite.db import get_papers_db, get_metas_db, get_tags_db, get_last_active_db, get_email_db
 from aslite.db import load_features
 
+def init_db() -> None:
+    get_papers_db('c')
+    get_metas_db('c')
+    get_tags_db('c')
+    get_last_active_db('c')
+    get_email_db('c')
+
 # -----------------------------------------------------------------------------
 # inits and globals
 
@@ -40,8 +47,15 @@ else:
     sk = 'devkey'
 app.secret_key = sk
 
+try:
+    init_db()
+    print("Success with initialising DB tables")
+except:
+    print("error initialising DB tables")
+
 # -----------------------------------------------------------------------------
 # globals that manage the (lazy) loading of various state for a request
+
 
 def get_tags():
     if g.user is None:
