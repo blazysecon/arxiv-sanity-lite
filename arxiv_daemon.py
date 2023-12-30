@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--num', type=int, default=100, help='up to how many papers to fetch')
     parser.add_argument('-d', '--detailed', type=bool, default=False, help='whether to do a detailed fetch')
     parser.add_argument('-s', '--start', type=int, default=0, help='start at what index')
-    parser.add_argument('-b', '--break-after', type=int, default=10, help='how many 0 new papers in a row would cause us to stop early? or 0 to disable.')
+    parser.add_argument('-b', '--break-after', type=int, default=3, help='how many 0 new papers in a row would cause us to stop early? or 0 to disable.')
     args = parser.parse_args()
     print(args)
     """
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     # query string of papers to look for
     if args.detailed:
-        q_list = ['cat:econ.GN', 'cat:stat.ML', 'cat:cs.LG', 'cat:econ.EM', 'cat:stat.ME', 'cat:math.ST', 'cat:stat.AP']
+        q_list = ['cat:stat.ML', 'cat:cs.LG', 'cat:econ.EM', 'cat:stat.ME', 'cat:stat.AP', 'cat:math.ST', 'cat:econ.GN', 'RCT', 'experiments+AND+marketplace', 'interference+AND+marketplace', 'treatment+AND+allocation']
         # q_list = ['cat:math.ST']
     else:
         # q_list = ['cat:econ.EM']
@@ -99,7 +99,7 @@ if __name__ == '__main__':
                         if_success = True
                         break # otherwise we have to try again
                     ntried += 1
-                    if ntried > 3:
+                    if ntried > 5:
                         if len(papers) == 0:
                             logging.warning(f"we tried {ntried} times without errors, but got len(papers) = {len(papers)} < 100, will wait for 5min and try again")
                             time.sleep(5*60)
